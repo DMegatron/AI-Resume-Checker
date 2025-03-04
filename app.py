@@ -45,10 +45,10 @@ def input_pdf_setup(uploaded_file):
 st.set_page_config(page_title="ATS Resume Expert")
 st.header("ATS Tracking System")
 uploaded_file = st.file_uploader("Upload your resume (PDF)...", type=["pdf"])
-# custom_directory = st.text_input("Select a folder to save the Excel file:", value=r"C:\Users\souja\Desktop\Resume Data")
 
-# if custom_directory:
-    # os.makedirs(custom_directory, exist_ok=True)
+# Initialize session state to store the DataFrame
+if "resume_data" not in st.session_state:
+    st.session_state.resume_data = pd.DataFrame()
 
 submit1 = st.button("Process Resume")
 input_prompt1 = """
@@ -85,23 +85,35 @@ if submit1:
 
         extracted_data = response if response else {}
 
-        custom_directory = r"C:\Users\souja\Desktop\Resume Data"
-        os.makedirs(custom_directory, exist_ok=True)
-        excel_filename = os.path.join(custom_directory, "resume_data.xlsx")
+        if extracted_data:
+            new_data = pd.DataFrame([extracted_data])
 
-    if extracted_data:
-        new_data = pd.DataFrame([extracted_data])
+            # Append new data to the existing data in session state
+            st.session_state.resume_data = pd.concat([st.session_state.resume_data, new_data], ignore_index=True)
 
-        if os.path.exists(excel_filename):
-            existing_data = pd.read_excel(excel_filename, engine="openpyxl")
-            updated_data = pd.concat([existing_data, new_data], ignore_index=True)
+            st.success("✅ Resume data processed and appended successfully!")
+            st.dataframe(st.session_state.resume_data)
+
         else:
-            updated_data = new_data
-
-        updated_data.to_excel(excel_filename, index=False, engine="openpyxl")
-
-        st.success("✅ Resume data updated in existing Excel file!")
-        st.dataframe(updated_data)
-
+            st.warning("❌ No data extracted from the resume.")
     else:
-        st.warning("❌ No data extracted from the resume.")
+        st.error("Please upload a PDF file to process.")
+
+# Download button for the accumulated data
+if not st.session_state.resume_data.empty:
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        st.session_state.resume_data.to_excel(writer, index=False, sheet_name="Resume Data")
+    output.seek(0)
+
+    st.download_button(
+        label="Download Excel File",
+        data=output,
+        file_name="resume_data.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+# Button to clear the stored data
+if st.button("Clear All Data"):
+    st.session_state.resume_data = pd.DataFrame()
+    st.success("✅ All data has been cleared!")
