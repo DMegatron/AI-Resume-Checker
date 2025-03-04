@@ -1,8 +1,6 @@
 streamlit
 python-dotenv
 pandas
-Pillow
-pdf2image
+pdfplumber
 google-generativeai
 openpyxl
-poppler-utils
