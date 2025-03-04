@@ -9,12 +9,32 @@ import json
 import pandas as pd
 import pdfplumber
 import google.generativeai as genai
+import time  # For rate limiting
 
 # Configure Gemini API
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-import json
-import google.generativeai as genai
+# Rate limiting variables
+RATE_LIMIT = 500  # Maximum requests per minute
+TIME_WINDOW = 60  # Time window in seconds (1 minute)
+request_timestamps = []  # Stores timestamps of requests
+
+def check_rate_limit():
+    """Check if the rate limit has been exceeded."""
+    global request_timestamps
+    current_time = time.time()
+
+    # Remove timestamps older than the time window
+    request_timestamps = [t for t in request_timestamps if current_time - t <= TIME_WINDOW]
+
+    # Check if the number of requests exceeds the limit
+    if len(request_timestamps) >= RATE_LIMIT:
+        st.error("⚠️ Rate limit exceeded. Please wait a minute before making more requests.")
+        return False
+    else:
+        # Add the current request timestamp
+        request_timestamps.append(current_time)
+        return True
 
 def get_gemini_response(input_prompt, pdf_content):
     try:
@@ -44,7 +64,6 @@ def get_gemini_response(input_prompt, pdf_content):
     except Exception:
         st.warning("An error occurred while processing your request. Please try again later.")
         return {}
-
 
 def input_pdf_setup(uploaded_file):
     if uploaded_file is not None:
@@ -137,67 +156,66 @@ Return the response strictly in the following JSON format:
 Only return valid JSON and no extra text.
 """
 
-if submit1:
+if submit1 or submit2:
+    if not check_rate_limit():
+        st.stop()  # Stop further execution if rate limit is exceeded
+
     if uploaded_file is not None:
         pdf_content = input_pdf_setup(uploaded_file)
-        response = get_gemini_response(input_prompt1, pdf_content)
 
-        extracted_data = response if response else {}
+        if submit1:
+            response = get_gemini_response(input_prompt1, pdf_content)
+            extracted_data = response if response else {}
 
-        if extracted_data:
-            new_data = pd.DataFrame([extracted_data])
+            if extracted_data:
+                new_data = pd.DataFrame([extracted_data])
 
-            # Check for duplicates based on "Email" (or another unique field)
-            if not st.session_state.resume_data.empty:
-                # Check if the email already exists in the stored data
-                if extracted_data["Email"] in st.session_state.resume_data["Email"].values:
-                    st.warning("⚠️ This resume (based on email) already exists in the database. Skipping duplicate entry.")
+                # Check for duplicates based on "Email" (or another unique field)
+                if not st.session_state.resume_data.empty:
+                    # Check if the email already exists in the stored data
+                    if extracted_data["Email"] in st.session_state.resume_data["Email"].values:
+                        st.warning("⚠️ This resume (based on email) already exists in the database. Skipping duplicate entry.")
+                    else:
+                        # Append new data to the existing data in session state
+                        st.session_state.resume_data = pd.concat([st.session_state.resume_data, new_data], ignore_index=True)
+                        st.success("✅ Resume data processed and appended successfully!")
                 else:
-                    # Append new data to the existing data in session state
-                    st.session_state.resume_data = pd.concat([st.session_state.resume_data, new_data], ignore_index=True)
-                    st.success("✅ Resume data processed and appended successfully!")
+                    # If no data exists yet, just add the new data
+                    st.session_state.resume_data = new_data
+                    st.success("✅ Resume data processed and stored successfully!")
+
+                st.dataframe(st.session_state.resume_data)
+
             else:
-                # If no data exists yet, just add the new data
-                st.session_state.resume_data = new_data
-                st.success("✅ Resume data processed and stored successfully!")
+                st.warning("❌ No data extracted from the resume.")
 
-            st.dataframe(st.session_state.resume_data)
+        elif submit2:
+            response = get_gemini_response(input_prompt2, pdf_content)
 
-        else:
-            st.warning("❌ No data extracted from the resume.")
+            if response:
+                st.subheader("ATS Score and Feedback")
+                st.write(f"**ATS Score:** {response.get('ATS_Score', 'N/A')}")
+
+                strengths = response.get("Strengths", [])
+                improvements = response.get("Improvements", [])
+                overall_feedback = response.get("Overall_Feedback", "No feedback available.")
+
+                if strengths:
+                    st.write("### Strengths:")
+                    for strength in strengths:
+                        st.write(f"- {strength}")
+
+                if improvements:
+                    st.write("### Areas for Improvement:")
+                    for improvement in improvements:
+                        st.write(f"- {improvement}")
+
+                st.write("### Overall Feedback:")
+                st.write(overall_feedback)
+            else:
+                st.error("Failed to generate ATS score and feedback.")
     else:
         st.error("Please upload a PDF file to process.")
-
-if submit2:
-    if uploaded_file is not None:
-        pdf_content = input_pdf_setup(uploaded_file)
-        response = get_gemini_response(input_prompt2, pdf_content)
-
-        if response:
-            st.subheader("ATS Score and Feedback")
-            st.write(f"**ATS Score:** {response.get('ATS_Score', 'N/A')}")
-
-            strengths = response.get("Strengths", [])
-            improvements = response.get("Improvements", [])
-            overall_feedback = response.get("Overall_Feedback", "No feedback available.")
-
-            if strengths:
-                st.write("### Strengths:")
-                for strength in strengths:
-                    st.write(f"- {strength}")
-
-            if improvements:
-                st.write("### Areas for Improvement:")
-                for improvement in improvements:
-                    st.write(f"- {improvement}")
-
-            st.write("### Overall Feedback:")
-            st.write(overall_feedback)
-        else:
-            st.error("Failed to generate ATS score and feedback.")
-    else:
-        st.error("Please upload a PDF file to check the ATS score.")
-
 
 # Download button for the accumulated data
 if not st.session_state.resume_data.empty:
