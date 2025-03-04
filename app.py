@@ -13,25 +13,38 @@ import google.generativeai as genai
 # Configure Gemini API
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+import json
+import google.generativeai as genai
+
 def get_gemini_response(input_prompt, pdf_content):
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    response = model.generate_content([input_prompt, pdf_content])
-
     try:
-        response_text = response.candidates[0].content.parts[0].text
-    except (AttributeError, IndexError, KeyError):
-        st.error("Gemini API response structure is unexpected.")
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content([input_prompt, pdf_content])
+
+        if not response or not hasattr(response, "candidates") or not response.candidates:
+            st.warning("Unable to generate a valid response. Please try again.")
+            return {}
+
+        try:
+            response_text = response.candidates[0].content.parts[0].text
+        except (AttributeError, IndexError, KeyError):
+            st.warning("Unexpected response format received. Please try again later.")
+            return {}
+
+        # Cleaning response text before JSON parsing
+        response_text = response_text.replace("json", "", 1).strip().strip("`")
+
+        try:
+            parsed_response = json.loads(response_text)
+            return parsed_response
+        except json.JSONDecodeError:
+            st.warning("Received response could not be processed. Please try again later.")
+            return {}
+
+    except Exception:
+        st.warning("An error occurred while processing your request. Please try again later.")
         return {}
 
-    response_text = response_text.replace("json", "", 1).strip()
-    response_text = response_text.strip("`")
-
-    try:
-        parsed_response = json.loads(response_text)
-        return parsed_response
-    except json.JSONDecodeError as e:
-        st.error(f"Error: Response is not in valid JSON format. {e}")
-        return {}
 
 def input_pdf_setup(uploaded_file):
     if uploaded_file is not None:
@@ -50,6 +63,7 @@ uploaded_file = st.file_uploader("Upload your resume (PDF)...", type=["pdf"])
 if "resume_data" not in st.session_state:
     st.session_state.resume_data = pd.DataFrame()
 
+# Button to process the resume and extract data
 submit1 = st.button("Process Resume")
 input_prompt1 = """
 You are an experienced Technical Human Resource Manager. Your task is to extract and list the following details from the provided resume:  
@@ -77,6 +91,51 @@ Ensure the extracted details are returned as a JSON object in the following stru
 
 Only return valid JSON and no extra text.
 """  
+
+# Button to check ATS score
+submit2 = st.button("Check ATS Score")
+input_prompt2 = """
+You are an advanced Applicant Tracking System (ATS) evaluator with expertise in resume screening and optimization. Your task is to analyze the provided resume and assess its ATS compatibility based on the following key criteria:
+
+1. **Keyword Relevance**: 
+   - Does the resume include industry-specific keywords and job-related terms?
+   - Are the keywords used in a natural and effective manner?
+   - Are important skills, certifications, and technologies mentioned?
+
+2. **Formatting & Parsing**: 
+   - Is the resume structured in a way that is ATS-friendly (e.g., no tables, graphics, or complex formatting that might hinder parsing)?
+   - Are section headings clear and correctly labeled?
+   - Is the document in a standard file format (e.g., PDF, DOCX) suitable for ATS?
+
+3. **Completeness**:
+   - Does the resume include all essential sections: Contact Information, Summary, Work Experience, Skills, Education, Certifications (if applicable)?
+   - Are job titles and company names clearly mentioned?
+   - Are employment dates included and formatted correctly?
+
+4. **Clarity & Readability**: 
+   - Is the language clear, concise, and professional?
+   - Are there any grammar or spelling mistakes?
+   - Are job descriptions and accomplishments well-articulated?
+
+After analyzing the resume, provide an ATS compatibility score out of 100 and a detailed breakdown of the evaluation. Highlight what the resume does well and provide constructive feedback on areas for improvement.
+
+Return the response strictly in the following JSON format:
+
+{
+  "ATS_Score": 85,
+  "Strengths": [
+    "The resume includes relevant industry keywords and job-specific skills.",
+    "The structure is clean and ATS-friendly, with proper section headings."
+  ],
+  "Improvements": [
+    "Work experience descriptions could be more detailed with quantified achievements.",
+    "The resume lacks a dedicated certifications section, which could improve ATS matching."
+  ],
+  "Overall_Feedback": "The resume is well-structured and includes key ATS-friendly elements. However, adding more detailed work descriptions and ensuring all relevant sections are present could further optimize it."
+}
+
+Only return valid JSON and no extra text.
+"""
 
 if submit1:
     if uploaded_file is not None:
@@ -108,6 +167,37 @@ if submit1:
             st.warning("❌ No data extracted from the resume.")
     else:
         st.error("Please upload a PDF file to process.")
+
+if submit2:
+    if uploaded_file is not None:
+        pdf_content = input_pdf_setup(uploaded_file)
+        response = get_gemini_response(input_prompt2, pdf_content)
+
+        if response:
+            st.subheader("ATS Score and Feedback")
+            st.write(f"**ATS Score:** {response.get('ATS_Score', 'N/A')}")
+
+            strengths = response.get("Strengths", [])
+            improvements = response.get("Improvements", [])
+            overall_feedback = response.get("Overall_Feedback", "No feedback available.")
+
+            if strengths:
+                st.write("### Strengths:")
+                for strength in strengths:
+                    st.write(f"- {strength}")
+
+            if improvements:
+                st.write("### Areas for Improvement:")
+                for improvement in improvements:
+                    st.write(f"- {improvement}")
+
+            st.write("### Overall Feedback:")
+            st.write(overall_feedback)
+        else:
+            st.error("Failed to generate ATS score and feedback.")
+    else:
+        st.error("Please upload a PDF file to check the ATS score.")
+
 
 # Download button for the accumulated data
 if not st.session_state.resume_data.empty:
