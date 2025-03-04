@@ -11,7 +11,7 @@ from PIL import Image
 import pdf2image
 import google.generativeai as genai
 
-POPPLER_PATH = "/usr/bin/poppler"   
+POPPLER_PATH = "/usr/bin/"   
 
 
 # Configure Gemini API
