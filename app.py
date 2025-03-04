@@ -88,10 +88,20 @@ if submit1:
         if extracted_data:
             new_data = pd.DataFrame([extracted_data])
 
-            # Append new data to the existing data in session state
-            st.session_state.resume_data = pd.concat([st.session_state.resume_data, new_data], ignore_index=True)
+            # Check for duplicates based on "Email" (or another unique field)
+            if not st.session_state.resume_data.empty:
+                # Check if the email already exists in the stored data
+                if extracted_data["Email"] in st.session_state.resume_data["Email"].values:
+                    st.warning("⚠️ This resume (based on email) already exists in the database. Skipping duplicate entry.")
+                else:
+                    # Append new data to the existing data in session state
+                    st.session_state.resume_data = pd.concat([st.session_state.resume_data, new_data], ignore_index=True)
+                    st.success("✅ Resume data processed and appended successfully!")
+            else:
+                # If no data exists yet, just add the new data
+                st.session_state.resume_data = new_data
+                st.success("✅ Resume data processed and stored successfully!")
 
-            st.success("✅ Resume data processed and appended successfully!")
             st.dataframe(st.session_state.resume_data)
 
         else:
