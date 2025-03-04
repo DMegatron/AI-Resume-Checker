@@ -11,10 +11,6 @@ from PIL import Image
 import pdf2image
 import google.generativeai as genai
 
-POPPLER_PATH = "/usr/bin/poppler"   
-def input_pdf_setup(uploaded_file):
-    images = pdf2image.convert_from_bytes(uploaded_file.read(), poppler_path=POPPLER_PATH)
-    return images 
 
 # Configure Gemini API
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
