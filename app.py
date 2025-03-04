@@ -45,10 +45,10 @@ def input_pdf_setup(uploaded_file):
 st.set_page_config(page_title="ATS Resume Expert")
 st.header("ATS Tracking System")
 uploaded_file = st.file_uploader("Upload your resume (PDF)...", type=["pdf"])
-custom_directory = st.text_input("Select a folder to save the Excel file:", value=r"C:\Users\souja\Desktop\Resume Data")
+# custom_directory = st.text_input("Select a folder to save the Excel file:", value=r"C:\Users\souja\Desktop\Resume Data")
 
-if custom_directory:
-    os.makedirs(custom_directory, exist_ok=True)
+# if custom_directory:
+    # os.makedirs(custom_directory, exist_ok=True)
 
 submit1 = st.button("Process Resume")
 input_prompt1 = """
